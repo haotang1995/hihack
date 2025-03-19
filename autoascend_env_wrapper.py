@@ -9,6 +9,9 @@ import sys
 import tempfile
 import termios
 import tty
+import gzip
+import json
+import msgpack
 
 from pprint import pprint
 
@@ -122,6 +125,13 @@ class AutoAscendEnvWrapper:
 
         blstats = agent_lib.BLStats(*obs['blstats'])
         assert obs['chars'][blstats.y, blstats.x] == ord('@')
+
+        self.full_history_to_save = []
+        self.full_history_to_save.append({
+            'obs': {
+                k: v.tolist() if hasattr(v, 'tolist') else v
+                for k, v in obs.items()
+            }})
 
         return obs
 
@@ -370,6 +380,26 @@ class AutoAscendEnvWrapper:
                 print('Summary:')
                 pprint(self.get_summary())
 
+        out = {'obs': {k: v.tolist() if hasattr(v, 'tolist') else v for k, v in obs.items()},}
+        out['action'] = {
+            'action': str(action),
+            'action_int': self.env.actions.index(action),
+            'strategy_log': agent_strategy_log,
+            'strategy_log_int': HIHACK_ORDINALS[agent_strategy_log],
+        }
+        out['reward'] = reward
+        out['done'] = done
+        out['summary'] = {k: v.tolist() if hasattr(v, 'tolist') else v for k, v in self.get_summary().items()}
+        out['summary']['milestone'] = str(out['summary']['milestone'])
+        out['info'] = info
+        out['info']['end_reason'] = out['summary']['end_reason']
+        self.full_history_to_save.append(out)
+
+        if self.is_done or out['summary']['end_reason'] != '' or self.step_count % 5000 == 0:
+            with open(os.path.join(self.env.savedir, 'history.msgpack'), 'wb') as f:
+                msgpack.pack(self.full_history_to_save, f)
+            # with gzip.open(os.path.join(self.env.savedir, 'history.json.gz'), 'wt') as f:
+                # json.dump(self.full_history_to_save, f, indent=2)
         return obs, reward, done, info
 
     def debug_tiles(self, *args, **kwargs):
@@ -383,16 +413,21 @@ class AutoAscendEnvWrapper:
         return contextlib.suppress()
 
     def get_summary(self):
-        return {
+        summary = {
             'score': self.score,
             'steps': self.env._steps,
-            'turns': self.agent.blstats.time,
+            'turns': self.agent.blstats.time if 'blstats' in self.agent.__dict__ else -1,
             'level_num': len(self.agent.levels),
-            'experience_level': self.agent.blstats.experience_level,
+            'experience_level': self.agent.blstats.experience_level if 'blstats' in self.agent.__dict__ else -1,
             'milestone': self.agent.global_logic.milestone,
             'panic_num': len(self.agent.all_panics),
             'character': str(self.agent.character).split()[0],
             'end_reason': self.end_reason,
             'seed': self.env.get_seeds(),
-            **self.agent.stats_logger.get_stats_dict(),
         }
+        try:
+            summary |= self.agent.stats_logger.get_stats_dict()
+        except BaseException:
+            pass
+        return summary
+

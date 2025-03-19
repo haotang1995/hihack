@@ -67,7 +67,8 @@ def gen_and_write_episode(idx,
                     no_progress_timeout=1000,
                     savedir=os.path.join(data_dir, f'{game_seed}'),
                     save_ttyrec_every=1,
-                    max_episode_steps=200000000
+                    # max_episode_steps=200000000
+                    max_episode_steps=10010,
                 ),
                 agent_args=dict(panic_on_errors=True, verbose=False)
             )
@@ -134,7 +135,7 @@ def create_dataset(args):
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument('--base_dir', default='data', type=str, help='dir where to store data')
-    parser.add_argument('--dataset_name', default='test2', type=str)
+    parser.add_argument('--dataset_name', default='full_aa', type=str)
     parser.add_argument('--seed', default=0, type=int, help='starting random seed')
     parser.add_argument('-c', '--cores', default=4, type=int, help='cores to employ')
     parser.add_argument('-n', '--episodes', type=int, default=10000)
