@@ -18,8 +18,10 @@ from autoascend_env_wrapper import AutoAscendEnvWrapper
 base_path = str(pathlib.Path().resolve())
 HIHACK_PATH = os.path.join(base_path[:base_path.find('hihack')], 'hihack')
 
-def get_seeds(n, 
-              target_role, 
+from hao_config import DEBUG_MODE
+
+def get_seeds(n,
+              target_role,
               start_seed=0):
 
     if target_role == 'null':
@@ -46,11 +48,11 @@ def get_seeds(n,
             start_seed += 1
     return np.array(relevant_seeds).astype(int)
 
-def gen_and_write_episode(idx, 
-                          start_i, 
-                          total_rollouts, 
-                          data_dir, 
-                          seeds, 
+def gen_and_write_episode(idx,
+                          start_i,
+                          total_rollouts,
+                          data_dir,
+                          seeds,
                           zbase=1):
     with tqdm(total=total_rollouts, position=idx, desc=str(os.getpid())) as pbar:
         for game_id in range(start_i, start_i + total_rollouts):
@@ -61,19 +63,22 @@ def gen_and_write_episode(idx,
 
             env = AutoAscendEnvWrapper(
                 gym.make(
-                    'NetHackChallenge-v0', 
-                    no_progress_timeout=1000, 
-                    savedir=os.path.join(data_dir, f'{game_seed}'), 
-                    save_ttyrec_every=1, 
+                    'NetHackChallenge-v0',
+                    no_progress_timeout=1000,
+                    savedir=os.path.join(data_dir, f'{game_seed}'),
+                    save_ttyrec_every=1,
                     max_episode_steps=200000000
-                ), 
+                ),
                 agent_args=dict(panic_on_errors=True, verbose=False)
             )
             env.env.seed(game_seed, game_seed)
             try:
                 env.main()
-            except BaseException:
-                pass
+            except BaseException as e:
+                if DEBUG_MODE:
+                    raise e
+                else:
+                    pass
 
             pbar.update(1)
     return 1
@@ -82,8 +87,8 @@ def create_dataset(args):
     # set main filepath
     data_dir = os.path.join(HIHACK_PATH, args.base_dir, args.dataset_name)
     os.makedirs(data_dir, exist_ok=True)
-   
-    # first determine n unique seeds 
+
+    # first determine n unique seeds
     if args.role is None:
         role = 'null'
     else:
@@ -100,9 +105,9 @@ def create_dataset(args):
     num_proc = max(min(multiprocessing.cpu_count(), args.cores), 1) # use no more than the number of available cores
     num_rollouts_per_proc = (relevant_seeds.shape[0] // num_proc) + 1
     gen_helper_fn = functools.partial(
-        gen_and_write_episode, 
-        data_dir=data_dir, 
-        seeds=relevant_seeds, 
+        gen_and_write_episode,
+        data_dir=data_dir,
+        seeds=relevant_seeds,
         zbase=int(np.log10(args.episodes) + 0.5)
     )
 
@@ -111,16 +116,20 @@ def create_dataset(args):
     start_i = 0
     for j, proc in enumerate(range(num_proc - 1)):
         gen_args += [[j, start_i, num_rollouts_per_proc]]
-        start_i += num_rollouts_per_proc 
+        start_i += num_rollouts_per_proc
     if relevant_seeds.shape[0] - start_i > 0:
         gen_args += [[num_proc - 1, start_i, relevant_seeds.shape[0] - start_i]]
-    
+
     # run pool
-    pool = multiprocessing.Pool(num_proc)
-    runs = [pool.apply_async(gen_helper_fn, args=gen_args[k]) for k in range(num_proc) if len(gen_args) > k]
-    results = [p.get() for p in runs]
-    
-    
+    if DEBUG_MODE:
+        for k in range(num_proc):
+            gen_helper_fn(*gen_args[k])
+    else:
+        pool = multiprocessing.Pool(num_proc)
+        runs = [pool.apply_async(gen_helper_fn, args=gen_args[k]) for k in range(num_proc) if len(gen_args) > k]
+        results = [p.get() for p in runs]
+
+
 
 def parse_args():
     parser = ArgumentParser()

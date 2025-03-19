@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(HIHACK_PATH, 'autoascend'))
 from autoascend import agent as agent_lib  # the library can be reloaded in `reload_agent` function
 from autoascend.visualization import visualizer
 
-
+from hao_config import DEBUG_MODE
 
 def fork_with_nethack_env(env):
     tmpdir = tempfile.mkdtemp(prefix='nlecopy_')
