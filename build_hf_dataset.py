@@ -13,7 +13,7 @@ from nle.language_wrapper.wrappers.nle_language_wrapper import nle_language_obsv
 from datasets import Dataset, DatasetDict, load_from_disk
 
 DATASET_PATH = osp.join(osp.dirname(osp.abspath(__file__)), 'data', 'full_aa')
-TEMP_DATASET_PATH = osp.join(osp.dirname(osp.abspath(__file__)), 'temp_datasets')
+TEMP_DATASET_PATH = osp.join(osp.dirname(osp.abspath(__file__)), 'full_aa_datasets')
 nle_language = nle_language_obsv.NLELanguageObsv()
 
 print(f"Looking for datasets in: {DATASET_PATH}")
@@ -29,9 +29,12 @@ def load_dataset(seed):
     print(f"Loading dataset from: {filename}")
     with open(filename, 'rb') as f:
         dataset = msgpack.unpack(f)
+    print(f"Loaded dataset, length: {len(dataset)}")
     return dataset
 
-def textualize_obs(obs):
+def textualize_obs(data):
+    obs = data['obs']
+
     glyphs = obs['glyphs']
     blstats = obs['blstats']
     tty_cursor = obs['tty_cursor']
@@ -66,7 +69,18 @@ def textualize_obs(obs):
         "balrog_short_term_context": short_term_context,
     })
 
-    return obs
+    data['obs'] = obs
+    if 'done' in data:
+        data['done'] = int(data['done'])
+    if 'summary' in data and 'seed' in data['summary'] and data['summary']['seed']:
+        data['summary']['seed'] = [int(x) for x in data['summary']['seed']]
+    if 'info' in data and 'is_ascended' in data['info']:
+        data['info']['is_ascended'] = int(data['info']['is_ascended'])
+    for key in ['action', 'reward', 'done', 'info', 'summary']:
+        if key not in data:
+            data[key] = None
+
+    return data
 
 def process_dataset(seed):
     start_time = time.time()
@@ -77,13 +91,15 @@ def process_dataset(seed):
         return None
 
     process_start = time.time()
-    processed_dataset = [{'obs': textualize_obs(data['obs'])} for data in dataset]
+    processed_dataset = [textualize_obs(data) for data in dataset]
     process_time = time.time() - process_start
+    print(f'Processed dataset, length: {len(processed_dataset)}')
 
     # Convert to HF Dataset and save to disk
     hf_dataset = Dataset.from_list(processed_dataset)
     dataset_path = osp.join(TEMP_DATASET_PATH, f'dataset_{seed}')
     hf_dataset.save_to_disk(dataset_path)
+    print(f"Saved dataset to: {dataset_path}")
 
     return {
         'seed': seed,
@@ -101,7 +117,7 @@ seeds = [seed for seed in os.listdir(DATASET_PATH) if osp.isdir(osp.join(DATASET
 print(f"\nFound {len(seeds)} seeds to process")
 
 # Process all datasets in parallel
-num_processes = min(30, len(seeds))  # Don't use more processes than seeds
+num_processes = min(10, len(seeds))  # Don't use more processes than seeds
 print(f"Using {num_processes} processes for parallel processing")
 
 start_time = time.time()
@@ -138,17 +154,18 @@ print(f"Min total time for a dataset: {np.min(timing_stats['total_times']):.2f} 
 # Calculate average length and create dataset name
 avg_length = np.mean(dataset_lengths)
 dataset_name = f'haotang/full-nla-aa-step{int(avg_length)}-eps{len(dataset_paths)}'
-
-# Create DatasetDict by loading datasets one at a time
-print("\nCreating DatasetDict...")
-datasets = {}
-for seed, path in dataset_paths.items():
-    print(f"Loading dataset for seed {seed}...")
-    datasets[seed] = load_from_disk(path)
-    # Clean up individual dataset files to save space
-    # shutil.rmtree(path)
+print(f"\nAverage dataset length: {avg_length:.2f}")
 
 if False: # do not push to hub as it's too large
+    # Create DatasetDict by loading datasets one at a time
+    print("\nCreating DatasetDict...")
+    datasets = {}
+    for seed, path in dataset_paths.items():
+        print(f"Loading dataset for seed {seed}...")
+        datasets[seed] = load_from_disk(path)
+        # Clean up individual dataset files to save space
+        # shutil.rmtree(path)
+
     dataset = DatasetDict(datasets)
 
     # Push to hub with memory-efficient settings

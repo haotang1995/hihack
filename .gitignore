@@ -2,4 +2,5 @@ data
 .vscode
 **__pycache__**
 temp_datasets
+full_aa_datasets
 
