@@ -19,15 +19,23 @@ base_path = str(pathlib.Path().resolve())
 HIHACK_PATH = os.path.join(base_path[:base_path.find('hihack')], 'hihack')
 
 from hao_config import DEBUG_MODE
+from nle_language_wrapper import nle_language_obsv, NLELanguageWrapper
+nle_language = nle_language_obsv.NLELanguageObsv()
+
+def get_message(obs):
+    tty_chars = obs['tty_chars']
+    return nle_language.text_message(tty_chars).decode("latin-1")
 
 def get_seeds(n,
               target_role,
               start_seed=0):
 
-    if target_role == 'null':
+    if not target_role:
         return np.array([i for i in range(start_seed, n+start_seed)])
 
+    target_role = [kw.lower() for kw in target_role]
     relevant_seeds = []
+    restricted_seeds = []
     with tqdm(total=n) as pbar:
         while not len(relevant_seeds) == n:
             candidate_seed = start_seed
@@ -35,14 +43,15 @@ def get_seeds(n,
                 env = gym.make('NetHackChallenge-v0')
                 env.seed(candidate_seed, candidate_seed)
                 obs = env.reset()
-                blstats = agent_lib.BLStats(*obs['blstats'])
-                character_glyph = obs['glyphs'][blstats.y, blstats.x]
-                if any([nh.permonst(nh.glyph_to_mon(character_glyph)).mname.startswith(role) for role in target_role]):
+                message = get_message(obs).lower()
+                if all([kw in message for kw in target_role]):
                     break
+                # print(f'\tSkipping seed {candidate_seed} with message: {message}')
                 candidate_seed += 10**5
                 candidate_seed = candidate_seed % sys.maxsize
                 env.close()
-            if not candidate_seed in relevant_seeds and not candidate_seed in restricted_seeds:
+            print(f'Found seed {candidate_seed} with message: {message}')
+            if candidate_seed not in relevant_seeds and candidate_seed not in restricted_seeds:
                 relevant_seeds += [candidate_seed]
                 pbar.update(1)
             start_seed += 1
@@ -67,8 +76,8 @@ def gen_and_write_episode(idx,
                     no_progress_timeout=1000,
                     savedir=os.path.join(data_dir, f'{game_seed}'),
                     save_ttyrec_every=1,
-                    # max_episode_steps=200000000
-                    max_episode_steps=10010,
+                    max_episode_steps=200000000
+                    # max_episode_steps=10010,
                 ),
                 agent_args=dict(panic_on_errors=True, verbose=False)
             )
@@ -91,7 +100,7 @@ def create_dataset(args):
 
     # first determine n unique seeds
     if args.role is None:
-        role = 'null'
+        role = []
     else:
         role = args.role
 
@@ -139,10 +148,11 @@ def parse_args():
     parser.add_argument('--seed', default=0, type=int, help='starting random seed')
     parser.add_argument('-c', '--cores', default=4, type=int, help='cores to employ')
     parser.add_argument('-n', '--episodes', type=int, default=10000)
-    parser.add_argument('--role', choices=('arc', 'bar', 'cav', 'hea', 'kni',
-                                           'mon', 'pri', 'ran', 'rog', 'sam',
-                                           'tou', 'val', 'wiz'),
-                        action='append')
+    # parser.add_argument('--role', choices=('arc', 'bar', 'cav', 'hea', 'kni',
+                                           # 'mon', 'pri', 'ran', 'rog', 'sam',
+                                           # 'tou', 'val', 'wiz'),
+                        # action='append')
+    parser.add_argument('--role', default=None, type=str, nargs='+', help='keyword to search for in the first message to specify the role of the player')
     parser.add_argument('--panic-on-errors', default=True, action='store_true')
 
     args = parser.parse_args()
