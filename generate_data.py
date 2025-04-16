@@ -8,6 +8,7 @@ import pathlib
 import pdb
 import sys
 import time
+import msgpack
 
 from argparse import ArgumentParser
 from multiprocessing.pool import ThreadPool
@@ -79,7 +80,8 @@ def gen_and_write_episode(idx,
                     max_episode_steps=200000000
                     # max_episode_steps=10010,
                 ),
-                agent_args=dict(panic_on_errors=True, verbose=False)
+                agent_args=dict(panic_on_errors=True, verbose=False),
+                step_limit=5010,
             )
             env.env.seed(game_seed, game_seed)
             try:
@@ -95,7 +97,7 @@ def gen_and_write_episode(idx,
 
 def create_dataset(args):
     # set main filepath
-    data_dir = os.path.join(HIHACK_PATH, args.base_dir, args.dataset_name)
+    data_dir = os.path.join(HIHACK_PATH, args.base_dir, args.dataset_name + ('' if args.role is None else '_' + '_'.join(sorted(args.role))))
     os.makedirs(data_dir, exist_ok=True)
 
     # first determine n unique seeds
@@ -106,7 +108,11 @@ def create_dataset(args):
 
     relevant_seeds = get_seeds(args.episodes, role, args.seed)
 
-    seeds_done = [int(f[f.rfind('/')+1:]) for f in os.listdir(data_dir)]
+    # seeds_done = [int(f[f.rfind('/')+1:]) for f in os.listdir(data_dir)]
+    seeds_done = []
+    # for seed in relevant_seeds:
+        # if os.path.exists(os.path.join(data_dir, f'{seed}', 'history.msgpack')):
+            # seeds_done.append(seed)
     relevant_seeds = np.array(list(set(list(relevant_seeds)).difference(set(seeds_done))))
     print(f'{relevant_seeds.shape[0]} seeds generated!')
 
@@ -133,7 +139,8 @@ def create_dataset(args):
     # run pool
     if DEBUG_MODE:
         for k in range(num_proc):
-            gen_helper_fn(*gen_args[k])
+            if len(gen_args) > k:
+                gen_helper_fn(*gen_args[k])
     else:
         pool = multiprocessing.Pool(num_proc)
         runs = [pool.apply_async(gen_helper_fn, args=gen_args[k]) for k in range(num_proc) if len(gen_args) > k]

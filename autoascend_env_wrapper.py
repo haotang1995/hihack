@@ -346,10 +346,13 @@ class AutoAscendEnvWrapper:
         #     agent_lib.G.assert_map(obs['glyphs'], obs['chars'])
 
         # uncomment to debug measure up to assumed median
-        # if self.score >= 7000:
-        #     done = True
-        #     self.end_reason = 'quit after median'
-        if done:
+        if self.step_limit is not None and self.step_count == self.step_limit + 1:
+            self.end_reason = self.end_reason or 'steplimit'
+            done = True
+        # elif self.score >= 3000:
+            # done = True
+            # self.end_reason = 'quit after 3000 score'
+        elif done:
             if self.visualizer is not None:
                 self.visualizer.step(self.last_observation, repr(chr(int(agent_action))))
 
@@ -364,11 +367,8 @@ class AutoAscendEnvWrapper:
             self.end_reason = info['end_status'].name + ': ' + \
                               (' '.join(first_sentence[:first_sentence.index('in')]) + '. ' +
                                '.'.join(end_reason.split('.')[1:]).strip()).strip()
-        if self.step_limit is not None and self.step_count == self.step_limit + 1:
-            self.end_reason = self.end_reason or 'steplimit'
-            done = True
-        elif self.step_limit is not None and self.step_count > self.step_limit + 1:
-            assert 0
+        # elif self.step_limit is not None and self.step_count > self.step_limit + 1:
+            # assert 0
 
         self.last_observation = obs
 
@@ -395,7 +395,9 @@ class AutoAscendEnvWrapper:
         out['info']['end_reason'] = out['summary']['end_reason']
         self.full_history_to_save.append(out)
 
-        if self.is_done or out['summary']['end_reason'] != '' or self.step_count % 5000 == 0:
+        print(self.step_count, self.score, out['summary']['end_reason'], out['summary']['milestone'],)
+
+        if done or self.is_done or out['summary']['end_reason'] != '' or (self.step_count+1) % 5000 == 0:
             with open(os.path.join(self.env.savedir, 'history.msgpack'), 'wb') as f:
                 msgpack.pack(self.full_history_to_save, f)
             # with gzip.open(os.path.join(self.env.savedir, 'history.json.gz'), 'wt') as f:
