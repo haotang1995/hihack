@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 import copy
 
+from nle import nethack
 from nle_language_wrapper import nle_language_obsv, NLELanguageWrapper
 nle_language = nle_language_obsv.NLELanguageObsv()
 
@@ -42,8 +43,18 @@ def main():
 def process_dataset(dataset_path, num_processes=10, role=None, step_limit=None,):
     hf_dataset_path = osp.join(dataset_path, f'hf_text_dataset_{step_limit if step_limit is not None else "full"}.hf')
     if osp.exists(hf_dataset_path):
-        print(f"Dataset already processed, skipping: {hf_dataset_path}")
-        return None
+        try:
+            dataset = load_from_disk(hf_dataset_path)
+            print(f"Loaded HF dataset from: {hf_dataset_path} of length {len(dataset)}")
+            text_map_line_num = len([row for row in dataset[0]['obs']['text_map'].split('\n') if len(row)])
+            if text_map_line_num < 24:
+                print(f"Text map line number {text_map_line_num} is less than 24, wrong text map")
+            else:
+                print(f"Dataset already processed, skipping: {hf_dataset_path}")
+                return None
+        except Exception as e:
+            print(f"Failed to load HF dataset from: {hf_dataset_path}, error: {e}")
+            shutil.rmtree(hf_dataset_path)
 
     start_time = time.time()
     dataset = load_dataset(dataset_path)
@@ -138,7 +149,7 @@ def textualize_obs(data):
         "text_blstats": nle_language.text_blstats(blstats).decode("latin-1"),
         "text_inventory": nle_language.text_inventory(inv_strs, inv_letters).decode("latin-1"),
         "text_cursor": nle_language.text_cursor(glyphs, blstats, tty_cursor).decode("latin-1"),
-        "text_map": ascii_render(glyphs),
+        "text_map": ascii_render(tty_chars),
     }
 
     data = copy.deepcopy(data)
