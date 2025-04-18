@@ -395,7 +395,7 @@ class AutoAscendEnvWrapper:
         out['info']['end_reason'] = out['summary']['end_reason']
         self.full_history_to_save.append(out)
 
-        print(self.step_count, self.score, out['summary']['end_reason'], out['summary']['milestone'],)
+        print(self.step_count, done, self.score, out['summary']['end_reason'], out['summary']['milestone'],)
 
         if done or self.is_done or out['summary']['end_reason'] != '' or (self.step_count+1) % 5000 == 0:
             with open(os.path.join(self.env.savedir, 'history.msgpack'), 'wb') as f:

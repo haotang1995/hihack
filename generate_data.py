@@ -9,11 +9,13 @@ import pdb
 import sys
 import time
 import msgpack
+import random
 
 from argparse import ArgumentParser
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from tqdm import tqdm
+import msgpack
 
 from autoascend_env_wrapper import AutoAscendEnvWrapper
 base_path = str(pathlib.Path().resolve())
@@ -71,6 +73,14 @@ def gen_and_write_episode(idx,
                 break
             game_seed = seeds[game_id]
 
+            history_path = os.path.join(data_dir, f'{game_seed}', 'history.msgpack')
+            if os.path.exists(history_path):
+                with open(history_path, 'rb') as f:
+                    history = msgpack.unpack(f, raw=False)
+                if history[-1]['done']:
+                    print(f'Seed {game_seed} already done!')
+                    pbar.update(1)
+                    continue
             env = AutoAscendEnvWrapper(
                 gym.make(
                     'NetHackChallenge-v0',
@@ -81,7 +91,7 @@ def gen_and_write_episode(idx,
                     # max_episode_steps=10010,
                 ),
                 agent_args=dict(panic_on_errors=True, verbose=False),
-                step_limit=5010,
+                # step_limit=5010,
             )
             env.env.seed(game_seed, game_seed)
             try:
@@ -90,7 +100,12 @@ def gen_and_write_episode(idx,
                 if DEBUG_MODE:
                     raise e
                 else:
-                    pass
+                    with open(history_path, 'rb') as f:
+                        history = msgpack.unpack(f, raw=False)
+                    history[-1]['done'] = 2
+                    history[-1]['info']['end_reason'] = str(e)
+                    with open(history_path, 'wb') as f:
+                        msgpack.pack(history, f)
 
             pbar.update(1)
     return 1
@@ -107,6 +122,7 @@ def create_dataset(args):
         role = args.role
 
     relevant_seeds = get_seeds(args.episodes, role, args.seed)
+    random.shuffle(relevant_seeds)
 
     # seeds_done = [int(f[f.rfind('/')+1:]) for f in os.listdir(data_dir)]
     seeds_done = []
@@ -154,7 +170,7 @@ def parse_args():
     parser.add_argument('--dataset_name', default='full_aa', type=str)
     parser.add_argument('--seed', default=0, type=int, help='starting random seed')
     parser.add_argument('-c', '--cores', default=4, type=int, help='cores to employ')
-    parser.add_argument('-n', '--episodes', type=int, default=10000)
+    parser.add_argument('-n', '--episodes', type=int, default=100000)
     # parser.add_argument('--role', choices=('arc', 'bar', 'cav', 'hea', 'kni',
                                            # 'mon', 'pri', 'ran', 'rog', 'sam',
                                            # 'tou', 'val', 'wiz'),
